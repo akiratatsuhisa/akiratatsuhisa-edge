@@ -14,7 +14,7 @@ const getUserInfo = async ({
   jwt: string;
   payload: JWTPayload;
 }): Promise<IIdentityUser> => {
-  const key = `${AUTH0_USER_INFO}:${payload.sub}`;
+  const key = `${AUTH0_USER_INFO}:${jwt.split('.').at(2)}`;
   const cache = await context.env.KV_NAMESPACE.get(key);
 
   if (cache) {
@@ -28,7 +28,7 @@ const getUserInfo = async ({
     },
   });
 
-  const data = await response.json<IIdentityUser>();
+  const data = (await response.json()) as IIdentityUser;
 
   await context.env.KV_NAMESPACE.put(key, JSON.stringify(data), {
     expiration: payload.exp,

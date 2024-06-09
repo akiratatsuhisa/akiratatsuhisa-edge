@@ -7,8 +7,8 @@ import {
   parseLanguageCode,
   parseQueries,
   parseQuery,
+  regexId,
   regexLanguageCode,
-  regexObjectId,
   Role,
 } from '../utils';
 import {
@@ -45,16 +45,18 @@ export const projectsRoute = (app: Hono<HonoEnv>) => {
   );
   // Search by id
   app.get(
-    `${prefix}/:id{${regexObjectId}}`,
+    `${prefix}/:id{${regexId}}`,
     authorize([Role.Administrator]),
     async (context) =>
       context.json(
-        await context.get('services').projects.getById(context.req.param('id')),
+        await context
+          .get('services')
+          .projects.getById(Number(context.req.param('id'))),
       ),
   );
   // Sort
   app.patch(
-    `${prefix}/:id{${regexObjectId}}/sort`,
+    `${prefix}/:id{${regexId}}/sort`,
     authorize([Role.Administrator]),
     async (context) => context.json(null),
   );
@@ -72,35 +74,40 @@ export const projectsRoute = (app: Hono<HonoEnv>) => {
   );
   // Update
   app.put(
-    `${prefix}/:id{${regexObjectId}}`,
+    `${prefix}/:id{${regexId}}`,
     authorize([Role.Administrator]),
     validator('json', validateSchema(upsertProjectSchema)),
     async (context) =>
       context.json(
         await context
           .get('services')
-          .projects.update(context.req.param('id'), context.req.valid('json')),
+          .projects.update(
+            Number(context.req.param('id')),
+            context.req.valid('json'),
+          ),
       ),
   );
   // Delete
   app.delete(
-    `${prefix}/:id{${regexObjectId}}`,
+    `${prefix}/:id{${regexId}}`,
     authorize([Role.Administrator]),
     async (context) =>
       context.json(
-        await context.get('services').projects.delete(context.req.param('id')),
+        await context
+          .get('services')
+          .projects.delete(Number(context.req.param('id'))),
       ),
   );
   // Upsert locale
   app.put(
-    `${prefix}/:projectId{${regexObjectId}}/locale/:languageCode{${regexLanguageCode}}`,
+    `${prefix}/:projectId{${regexId}}/locale/:languageCode{${regexLanguageCode}}`,
     authorize([Role.Administrator]),
     validator('json', validateSchema(upsertProjectLocalizationSchema)),
     async (context) =>
       context.json(
         await context.get('services').projects.upsertLocale(
           {
-            projectId: context.req.param('projectId'),
+            projectId: Number(context.req.param('projectId')),
             languageCode: parseLanguageCode(context.req.param('languageCode')),
           },
           context.req.valid('json'),
@@ -109,19 +116,19 @@ export const projectsRoute = (app: Hono<HonoEnv>) => {
   );
   // Delete locale
   app.delete(
-    `${prefix}/:projectId{${regexObjectId}}/locale/:languageCode{${regexLanguageCode}}`,
+    `${prefix}/:projectId{${regexId}}/locale/:languageCode{${regexLanguageCode}}`,
     authorize([Role.Administrator]),
     async (context) =>
       context.json(
         await context.get('services').projects.deleteLocale({
-          projectId: context.req.param('projectId'),
+          projectId: Number(context.req.param('projectId')),
           languageCode: parseLanguageCode(context.req.param('languageCode')),
         }),
       ),
   );
   // Upload Image
   app.post(
-    `${prefix}/:id{${regexObjectId}}/image`,
+    `${prefix}/:id{${regexId}}/image`,
     authorize([Role.Administrator]),
     validator('json', validateSchema(uploadProjectImageSchema)),
     async (context) =>
@@ -129,14 +136,14 @@ export const projectsRoute = (app: Hono<HonoEnv>) => {
         await context
           .get('services')
           .projects.getImageUploadLink(
-            context.req.param('id'),
+            Number(context.req.param('id')),
             context.req.valid('json'),
           ),
       ),
   );
   // Delete Image
   app.delete(
-    `${prefix}/:id{${regexObjectId}}/image`,
+    `${prefix}/:id{${regexId}}/image`,
     authorize([Role.Administrator]),
     validator('json', validateSchema(deleteProjectImageSchema)),
     async (context) =>
@@ -144,14 +151,14 @@ export const projectsRoute = (app: Hono<HonoEnv>) => {
         await context
           .get('services')
           .projects.deleteImage(
-            context.req.param('id'),
+            Number(context.req.param('id')),
             context.req.valid('json'),
           ),
       ),
   );
   // Sort Image
   app.patch(
-    `${prefix}/:id{${regexObjectId}}/image`,
+    `${prefix}/:id{${regexId}}/image`,
     authorize([Role.Administrator]),
     validator('json', validateSchema(sortProjectImageSchema)),
     async (context) =>
@@ -159,7 +166,7 @@ export const projectsRoute = (app: Hono<HonoEnv>) => {
         await context
           .get('services')
           .projects.sortImage(
-            context.req.param('id'),
+            Number(context.req.param('id')),
             context.req.valid('json'),
           ),
       ),
