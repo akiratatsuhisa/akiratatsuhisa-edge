@@ -1,13 +1,16 @@
+import * as drizzle from 'drizzle-orm';
+import { alias } from 'drizzle-orm/sqlite-core';
 import { Context, HonoEnv } from 'hono';
 import _ from 'lodash';
 import { v4 as uuidv4 } from 'uuid';
 
+import { projectLocalizations, projects } from '../schema';
 import {
+  HttpNotFound,
   LanguageCode,
-  Prisma,
+  parseDateTime,
   ProjectStatus,
-} from '../../generated/client/edge';
-import { HttpNotFound, parseDateTime } from '../utils';
+} from '../utils';
 import {
   DeleteProjectImageSchema,
   SortProjectImageSchema,
@@ -16,59 +19,55 @@ import {
 } from '../validators';
 import { BaseService } from './base';
 
-const projectsSelect = Prisma.validator<Prisma.ProjectSelect>()({
-  id: true,
-  thumbSrc: true,
-  sort: true,
-  isPublished: true,
-  startDate: true,
-  endDate: true,
-  status: true,
-  views: true,
-  createdAt: true,
-  updatedAt: true,
+const projectsSelect = {
+  id: projects.id,
+  thumbSrc: projects.thumbSrc,
+  sort: projects.sort,
+  isPublished: projects.isPublished,
+  startDate: projects.startDate,
+  endDate: projects.endDate,
+  status: projects.status,
+  views: projects.views,
+  createdAt: projects.createdAt,
+  updatedAt: projects.updatedAt,
   projectLocalizations: {
-    select: {
-      id: true,
-      slug: true,
-      languageCode: true,
-      title: true,
-      createdAt: true,
-      updatedAt: true,
-    },
+    id: projectLocalizations.id,
+    slug: projectLocalizations.slug,
+    languageCode: projectLocalizations.languageCode,
+    title: projectLocalizations.title,
+    createdAt: projectLocalizations.createdAt,
+    updatedAt: projectLocalizations.updatedAt,
   },
-});
+};
 
-const projectSelect = Prisma.validator<Prisma.ProjectSelect>()({
-  id: true,
-  thumbSrc: true,
-  sort: true,
-  isPublished: true,
-  startDate: true,
-  endDate: true,
-  status: true,
-  imageSrcs: true,
-  languages: true,
-  frameworks: true,
-  databases: true,
-  technologies: true,
-  others: true,
-  views: true,
+const projectSelect = {
+  id: projects.id,
+  thumbSrc: projects.thumbSrc,
+  sort: projects.sort,
+  isPublished: projects.isPublished,
+  startDate: projects.startDate,
+  endDate: projects.endDate,
+  status: projects.status,
+  imageSrcs: projects.imageSrcs,
+  languages: projects.languages,
+  frameworks: projects.frameworks,
+  databases: projects.databases,
+  technologies: projects.technologies,
+  others: projects.others,
+  views: projects.views,
   projectLocalizations: {
-    select: {
-      id: true,
-      slug: true,
-      languageCode: true,
-      title: true,
-      description: true,
-      client: true,
-      website: true,
-      source: true,
-      createdAt: true,
-      updatedAt: true,
-    },
+    id: projectLocalizations.id,
+    slug: projectLocalizations.slug,
+    languageCode: projectLocalizations.languageCode,
+    title: projectLocalizations.title,
+    description: projectLocalizations.description,
+    client: projectLocalizations.client,
+    website: projectLocalizations.website,
+    source: projectLocalizations.source,
+    createdAt: projectLocalizations.createdAt,
+    updatedAt: projectLocalizations.updatedAt,
   },
-});
+};
 
 export class ProjectsService extends BaseService {
   constructor(context: Context<HonoEnv>) {
@@ -98,124 +97,211 @@ export class ProjectsService extends BaseService {
     status?: Array<ProjectStatus>;
     language?: Array<LanguageCode>;
   }) {
-    const andWhere: Prisma.ProjectWhereInput[] = [];
+    const andWhere: drizzle.SQL[] = [];
 
-    if (query.title) {
-      andWhere.push({
-        projectLocalizations: { some: { title: { contains: query.title } } },
-      });
+    if (query.status?.length) {
+      andWhere.push(drizzle.inArray(projects.status, query.status));
     }
 
-    if (query.client) {
-      andWhere.push({
-        projectLocalizations: { some: { client: { contains: query.client } } },
-      });
+    if (query.title || query.client || query.language) {
+      const projectLocalizationsForWhere = alias(
+        projectLocalizations,
+        'projectLocalizationsForWhere',
+      );
+
+      const andWhereProjectLocalizations: drizzle.SQL[] = [];
+
+      if (query.title) {
+        andWhereProjectLocalizations.push(
+          drizzle.like(projectLocalizationsForWhere.title, `%${query.title}%`),
+        );
+      }
+
+      if (query.client) {
+        andWhereProjectLocalizations.push(
+          drizzle.like(
+            projectLocalizationsForWhere.client,
+            `%${query.client}%`,
+          ),
+        );
+      }
+
+      if (query.language) {
+        andWhereProjectLocalizations.push(
+          drizzle.inArray(
+            projectLocalizationsForWhere.languageCode,
+            query.language,
+          ),
+        );
+      }
+
+      if (andWhereProjectLocalizations.length) {
+        andWhere.push(
+          drizzle.exists(
+            this.db
+              .select({ id: projectLocalizationsForWhere.id })
+              .from(projectLocalizationsForWhere)
+              .where(
+                drizzle.and(
+                  drizzle.eq(
+                    projects.id,
+                    projectLocalizationsForWhere.projectId,
+                  ),
+                  ...andWhereProjectLocalizations,
+                ),
+              ),
+          ),
+        );
+      }
     }
 
-    if (query.status) {
-      andWhere.push({
-        status: { in: query.status },
-      });
-    }
+    const rows = await this.db
+      .select(projectsSelect)
+      .from(projects)
+      .leftJoin(
+        projectLocalizations,
+        drizzle.eq(projects.id, projectLocalizations.projectId),
+      )
+      .where(drizzle.and(...andWhere));
 
-    if (query.language) {
-      andWhere.push({
-        projectLocalizations: {
-          some: { languageCode: { in: query.language } },
+    const result = _.toArray(
+      _.reduce(
+        rows,
+        (rows, row) => {
+          if (!rows[row.id]) {
+            rows[row.id] = {
+              ..._.omit(row, 'projectLocalizations'),
+              projectLocalizations: [],
+            };
+          }
+
+          if (row.projectLocalizations) {
+            rows[row.id].projectLocalizations.push(row.projectLocalizations!);
+          }
+
+          return rows;
         },
-      });
-    }
-
-    const projects = await this.prisma.project.findMany({
-      select: projectsSelect,
-      where: { AND: andWhere },
-      orderBy: { sort: 'asc' },
-    });
-
-    await Promise.all(
-      _.map(projects, (project) => this.setProjectTemporaryLink(project)),
+        {} as Record<
+          number,
+          {
+            id: number;
+            thumbSrc: string | null;
+            sort: number;
+            isPublished: boolean;
+            startDate: Date | null;
+            endDate: Date | null;
+            status: string;
+            views: number;
+            createdAt: Date;
+            updatedAt: Date;
+            projectLocalizations: Array<{
+              id: number;
+              slug: string;
+              languageCode: string;
+              title: string;
+              createdAt: Date;
+              updatedAt: Date;
+            }>;
+          }
+        >,
+      ),
     );
 
-    return projects;
+    await Promise.all(
+      _.map(result, (row) => this.setProjectTemporaryLink(row)),
+    );
+
+    return result;
   }
 
-  async getById(id: string) {
-    const project = await this.prisma.project.findUnique({
-      select: projectSelect,
-      where: { id },
-    });
+  async getById(id: number) {
+    const rows = await this.db
+      .select(projectSelect)
+      .from(projects)
+      .leftJoin(
+        projectLocalizations,
+        drizzle.eq(projects.id, projectLocalizations.projectId),
+      )
+      .where(drizzle.eq(projects.id, id));
 
-    if (!project) {
+    if (!rows.length) {
       throw new HttpNotFound();
     }
 
-    await this.setProjectTemporaryLink(project);
+    const result = {
+      ..._.omit(rows[0], 'projectLocalizations'),
+      projectLocalizations: _.compact(_.map(rows, 'projectLocalizations')),
+    };
 
-    return project;
+    await this.setProjectTemporaryLink(result);
+
+    return result;
   }
 
   async create(dto: UpsertProjectSchema) {
-    const sort =
-      ((
-        await this.prisma.project.findFirst({
-          select: { sort: true },
-          orderBy: { sort: 'desc' },
-        })
-      )?.sort ?? 0) + 1;
+    const [{ sort: lastSort } = { sort: -1 }] = await this.db
+      .select({ sort: projects.sort })
+      .from(projects)
+      .orderBy(drizzle.desc(projects.sort))
+      .limit(1);
 
-    const project = await this.prisma.project.create({
-      data: {
+    const sort = lastSort + 1;
+
+    const [result] = await this.db
+      .insert(projects)
+      .values({
         ...dto,
-        startDate: parseDateTime(dto.startDate),
-        endDate: parseDateTime(dto.endDate),
         sort,
-      },
-      select: {
-        id: true,
-      },
-    });
+        startDate: parseDateTime(dto.startDate),
+        endDate: parseDateTime(dto.endDate),
+        ...this.getTimestamp('insert'),
+      })
+      .returning();
 
-    return project;
+    return result;
   }
 
-  async update(id: string, dto: UpsertProjectSchema) {
-    const project = await this.prisma.project.update({
-      where: { id },
-      data: {
+  async update(id: number, dto: UpsertProjectSchema) {
+    const [result] = await this.db
+      .update(projects)
+      .set({
         ...dto,
         startDate: parseDateTime(dto.startDate),
         endDate: parseDateTime(dto.endDate),
-      },
-      select: {
-        id: true,
-      },
-    });
+        ...this.getTimestamp('update'),
+      })
+      .where(drizzle.eq(projects.id, id))
+      .returning({ id: projects.id });
 
-    return project;
+    return result;
   }
 
-  async delete(id: string) {
-    const project = await this.prisma.project.delete({
-      where: { id },
-      select: {
-        id: true,
-        sort: true,
-      },
-    });
+  async delete(id: number) {
+    const [result] = await this.db
+      .delete(projects)
+      .where(drizzle.eq(projects.id, id))
+      .returning({ id: projects.id, sort: projects.sort });
 
-    await this.prisma.project.updateMany({
-      where: {
-        sort: { gt: project.sort },
-      },
-      data: {
-        sort: { decrement: 1 },
-      },
-    });
+    await await this.db
+      .update(projects)
+      .set({
+        sort: drizzle.sql`${projects.sort} - 1`,
+      })
+      .where(drizzle.gt(projects.sort, result.sort));
 
-    return { id: project.id };
+    return { id: result.id };
   }
 
-  async getImageUploadLink(id: string, dto: { isThumb?: boolean }) {
+  async getImageUploadLink(id: number, dto: { isThumb?: boolean }) {
+    const [result] = await this.db
+      .select({ id: projects.id, imageSrcs: projects.imageSrcs })
+      .from(projects)
+      .where(drizzle.eq(projects.id, id));
+
+    if (!result) {
+      throw new HttpNotFound();
+    }
+
     const imagePath = dto.isThumb ? 'thumb.png' : `images/${uuidv4()}.png`;
     const path = `/projects/${id}/${imagePath}`;
 
@@ -223,64 +309,75 @@ export class ProjectsService extends BaseService {
       path,
     });
 
-    await this.prisma.project.update({
-      where: { id },
-      data: dto.isThumb
-        ? {
-            thumbSrc: path,
-          }
-        : {
-            imageSrcs: { push: path },
-          },
-    });
+    await this.db
+      .update(projects)
+      .set(
+        dto.isThumb
+          ? { thumbSrc: path }
+          : { imageSrcs: [...result.imageSrcs, path] },
+      )
+      .where(drizzle.eq(projects.id, id));
 
     return { link };
   }
 
-  async deleteImage(id: string, dto: DeleteProjectImageSchema) {
-    const project = await this.prisma.project
-      .findUniqueOrThrow({
-        where: { id },
-        select: { id: true, thumbSrc: true, imageSrcs: true },
+  async deleteImage(id: number, dto: DeleteProjectImageSchema) {
+    const [result] = await this.db
+      .select({
+        id: projects.id,
+        thumbSrc: projects.thumbSrc,
+        imageSrcs: projects.imageSrcs,
       })
-      .catch(() => Promise.reject(new HttpNotFound()));
+      .from(projects)
+      .where(drizzle.eq(projects.id, id));
+
+    if (!result) {
+      throw new HttpNotFound();
+    }
 
     if (typeof dto.index !== 'number') {
-      await this.prisma.project.update({
-        where: { id },
-        data: { thumbSrc: null },
-      });
+      await this.db
+        .update(projects)
+        .set({
+          thumbSrc: null,
+        })
+        .where(drizzle.eq(projects.id, id));
 
       await this.context.env.KV_NAMESPACE.delete(
-        `DROPBOX_CACHE_TEMPORARY_LINK:${project.thumbSrc}`,
+        `DROPBOX_CACHE_TEMPORARY_LINK:${result.thumbSrc}`,
       );
 
       return null;
     }
 
     // delete by index
-    project.imageSrcs.splice(dto.index, 1);
+    result.imageSrcs.splice(dto.index, 1);
 
-    await this.prisma.project.update({
-      where: { id },
-      data: {
-        imageSrcs: project.imageSrcs,
-      },
-    });
+    await this.db
+      .update(projects)
+      .set({
+        imageSrcs: result.imageSrcs,
+      })
+      .where(drizzle.eq(projects.id, id));
 
     return null;
   }
 
-  async sortImage(id: string, dto: SortProjectImageSchema) {
-    const project = await this.prisma.project
-      .findUniqueOrThrow({
-        where: { id },
-        select: { id: true, imageSrcs: true },
+  async sortImage(id: number, dto: SortProjectImageSchema) {
+    const [result] = await this.db
+      .select({
+        id: projects.id,
+        imageSrcs: projects.imageSrcs,
       })
-      .catch(() => Promise.reject(new HttpNotFound()));
+      .from(projects)
+      .where(drizzle.eq(projects.id, id));
+
+    if (!result) {
+      throw new HttpNotFound();
+    }
 
     const { index, mode } = dto;
-    const srcs = [...project.imageSrcs];
+    const srcs = [...result.imageSrcs];
 
     if (mode === 'increment') {
       if (index < srcs.length - 1) {
@@ -296,116 +393,178 @@ export class ProjectsService extends BaseService {
       }
     }
 
-    await this.prisma.project.update({
-      where: { id },
-      data: { imageSrcs: srcs },
-    });
+    await this.db
+      .update(projects)
+      .set({
+        imageSrcs: srcs,
+      })
+      .where(drizzle.eq(projects.id, id));
 
     return null;
   }
 
   async upsertLocale(
-    options: {
-      projectId: string;
+    keys: {
+      projectId: number;
       languageCode: LanguageCode;
     },
     dto: UpsertProjectLocalizationSchema,
   ) {
-    const { projectId, languageCode } = options;
+    const { projectId, languageCode } = keys;
 
-    const project = await this.prisma.projectLocalization.upsert({
-      where: {
-        projectId_languageCode: { projectId, languageCode },
-      },
-      create: {
-        languageCode,
+    const [{ id: idInDb } = { id: 0 }] = await this.db
+      .select({
+        id: projectLocalizations.id,
+      })
+      .from(projectLocalizations)
+      .where(
+        drizzle.and(
+          drizzle.eq(projectLocalizations.projectId, projectId),
+          drizzle.eq(projectLocalizations.languageCode, languageCode),
+        ),
+      );
+
+    if (!idInDb) {
+      const [result] = await this.db
+        .insert(projectLocalizations)
+        .values({
+          languageCode,
+          projectId,
+          ...dto,
+          ...this.getTimestamp('insert'),
+        })
+        .returning({ id: projectLocalizations.id });
+
+      return result;
+    }
+
+    const [result] = await this.db
+      .update(projectLocalizations)
+      .set({
         ...dto,
-        project: { connect: { id: projectId } },
-      },
-      update: dto,
-      select: {
-        id: true,
-        languageCode: true,
-      },
-    });
+        ...this.getTimestamp('update'),
+      })
+      .where(
+        drizzle.and(
+          drizzle.eq(projectLocalizations.projectId, projectId),
+          drizzle.eq(projectLocalizations.languageCode, languageCode),
+        ),
+      )
+      .returning({ id: projectLocalizations.id });
 
-    return project;
+    return result;
   }
 
-  async deleteLocale(options: {
-    projectId: string;
-    languageCode: LanguageCode;
-  }) {
-    const { projectId, languageCode } = options;
+  async deleteLocale(keys: { projectId: number; languageCode: LanguageCode }) {
+    const { projectId, languageCode } = keys;
 
-    const project = await this.prisma.projectLocalization.delete({
-      where: {
-        projectId_languageCode: { projectId, languageCode },
-      },
-    });
+    const [result] = await this.db
+      .delete(projectLocalizations)
+      .where(
+        drizzle.and(
+          drizzle.eq(projectLocalizations.projectId, projectId),
+          drizzle.eq(projectLocalizations.languageCode, languageCode),
+        ),
+      )
+      .returning({ id: projectLocalizations.id });
 
-    return project;
+    return result;
   }
 
   async searchPublish(options: { languageCode: LanguageCode }) {
     const { languageCode } = options;
 
-    const projects = await this.prisma.project.findMany({
-      select: {
-        ...projectsSelect,
-        projectLocalizations: {
-          select: projectsSelect.projectLocalizations.select,
-          where: {
-            languageCode: languageCode as LanguageCode,
-          },
-        },
-      },
-      where: {
-        isPublished: true,
-        projectLocalizations: {
-          some: { languageCode: languageCode as LanguageCode },
-        },
-      },
-      orderBy: { sort: 'asc' },
-    });
+    const rows = await this.db
+      .select(projectsSelect)
+      .from(projects)
+      .leftJoin(
+        projectLocalizations,
+        drizzle.eq(projects.id, projectLocalizations.projectId),
+      )
+      .where(
+        drizzle.and(
+          drizzle.eq(projects.isPublished, true),
+          drizzle.eq(projectLocalizations.languageCode, languageCode),
+        ),
+      )
+      .orderBy(drizzle.asc(projects.sort));
 
-    await Promise.all(
-      _.map(projects, (project) => this.setProjectTemporaryLink(project)),
+    const result = _.toArray(
+      _.reduce(
+        rows,
+        (rows, row) => {
+          if (!rows[row.id]) {
+            rows[row.id] = {
+              ..._.omit(row, 'projectLocalizations'),
+              projectLocalization: row.projectLocalizations!,
+            };
+          }
+
+          return rows;
+        },
+        {} as Record<
+          number,
+          {
+            id: number;
+            thumbSrc: string | null;
+            sort: number;
+            isPublished: boolean;
+            startDate: Date | null;
+            endDate: Date | null;
+            status: string;
+            views: number;
+            createdAt: Date;
+            updatedAt: Date;
+            projectLocalization: {
+              id: number;
+              slug: string;
+              languageCode: string;
+              title: string;
+              createdAt: Date;
+              updatedAt: Date;
+            };
+          }
+        >,
+      ),
     );
 
-    return projects;
+    await Promise.all(
+      _.map(result, (row) => this.setProjectTemporaryLink(row)),
+    );
+
+    return result;
   }
 
   async searchBySlug(options: { slug: string; languageCode: LanguageCode }) {
     const { slug, languageCode } = options;
 
-    const project = await this.prisma.project.findFirst({
-      select: {
-        ...projectSelect,
-        projectLocalizations: {
-          select: projectSelect.projectLocalizations.select,
-          where: {
-            languageCode: languageCode as LanguageCode,
-          },
-        },
-      },
-      where: {
-        isPublished: true,
-        projectLocalizations: {
-          some: {
-            slug: slug,
-            languageCode: languageCode as LanguageCode,
-          },
-        },
-      },
-    });
+    const [row] = await this.db
+      .select(projectSelect)
+      .from(projects)
+      .leftJoin(
+        projectLocalizations,
+        drizzle.eq(projects.id, projectLocalizations.projectId),
+      )
+      .where(
+        drizzle.and(
+          drizzle.eq(projects.isPublished, true),
+          drizzle.eq(projectLocalizations.languageCode, languageCode),
+          drizzle.eq(projectLocalizations.slug, slug),
+        ),
+      )
+      .limit(1);
 
-    if (!project) {
+    if (!row) {
       throw new HttpNotFound();
     }
 
-    await this.setProjectTemporaryLink(project);
+    const result = {
+      ..._.omit(row, 'projectLocalizations'),
+      projectLocalization: row.projectLocalizations!,
+    };
 
-    return project;
+    await this.setProjectTemporaryLink(result);
+
+    return result;
   }
 }

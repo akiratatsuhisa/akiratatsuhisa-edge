@@ -7,7 +7,7 @@ import {
   Language,
   ProjectStatus,
   Technology,
-} from '../../generated/client/edge';
+} from '../utils';
 
 export const upsertProjectSchema = Yup.object({
   isPublished: Yup.boolean().required(),

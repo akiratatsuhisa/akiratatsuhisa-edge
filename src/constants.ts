@@ -1,6 +1,8 @@
 export type Bindings = {
   DATABASE_URL: string;
   KV_NAMESPACE: KVNamespace;
+  DB: D1Database;
+  AI: Ai;
 
   AUTH0_DOMAIN: string;
   AUTH0_AUDIENCE: string;

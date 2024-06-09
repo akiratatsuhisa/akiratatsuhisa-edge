@@ -25,11 +25,11 @@ export const setup: () => MiddlewareHandler<HonoEnv> =
         }),
       });
 
-      const data = await response.json<{
+      const data = (await response.json()) as {
         access_token: string;
         expires_in?: number;
         token_type: string;
-      }>();
+      };
 
       await context.env.KV_NAMESPACE.put(
         AUTH0_MANAGEMENT_TOKEN,
@@ -71,11 +71,11 @@ export const setup: () => MiddlewareHandler<HonoEnv> =
         }),
       });
 
-      const data = await response.json<{
+      const data = (await response.json()) as {
         access_token: string;
         expires_in?: number;
         token_type: string;
-      }>();
+      };
 
       await context.env.KV_NAMESPACE.put(
         DROPBOX_MANAGEMENT_TOKEN,

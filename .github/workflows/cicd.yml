@@ -17,12 +17,6 @@ jobs:
       - name: Install dependencies
         run: yarn
 
-      - name: Run Prisma Generate Accelerate
-        run: yarn db:generate
-        env:
-          DATABASE_URL: ${{ secrets.DATABASE_URL }}
-          DIRECT_URL: ${{ secrets.DIRECT_URL }}
-
       - name: Run test eslint and prettier
         run: yarn test:lint
 
@@ -37,7 +31,6 @@ jobs:
           cat <<EOF > wrangler.toml
           ${{ secrets.WRANGLER_CONFIG }}
           EOF
-        
 
       - name: Build & Deploy Worker
         uses: cloudflare/wrangler-action@v3

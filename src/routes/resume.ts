@@ -48,7 +48,7 @@ export const resumeRoute = (app: Hono<HonoEnv>) => {
       context.json(
         await context
           .get('services')
-          .resume.cancelContact(context.req.param('id')),
+          .resume.cancelContact(Number(context.req.param('id'))),
       ),
   );
 };

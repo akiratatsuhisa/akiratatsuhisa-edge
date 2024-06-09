@@ -5,7 +5,7 @@ import { cors } from 'hono/cors';
 import { HTTPException } from 'hono/http-exception';
 import { prettyJSON } from 'hono/pretty-json';
 
-import { authenticate, prisma, services, setup } from './middlewares';
+import { authenticate, database, services, setup } from './middlewares';
 import { authRoute, projectsRoute, resumeRoute, usersRoute } from './routes';
 import { scheduled } from './scheduled';
 import { HttpBadDto } from './utils';
@@ -16,7 +16,7 @@ const app = new Hono<HonoEnv>();
 app.use('*', prettyJSON());
 app.use('*', cors({ origin: '*', exposeHeaders: ['X-Total'] }));
 app.use('*', setup());
-app.use('*', prisma());
+app.use('*', database());
 app.use('*', services());
 app.use('*', authenticate());
 

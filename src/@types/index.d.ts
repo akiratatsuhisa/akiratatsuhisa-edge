@@ -1,13 +1,13 @@
+import { drizzle } from 'drizzle-orm/d1';
 import { Flags, Message, Schema } from 'yup';
 
 import { Bindings } from '../constants';
-import { ExtendedPrismaClient } from '../db';
 import { IIdentityUser } from '../interfaces';
 import { Services } from '../services';
 
 declare module 'hono' {
   interface ContextVariableMap {
-    prisma: ExtendedPrismaClient;
+    db: ReturnType<typeof drizzle>;
     token: string | null;
     user: IIdentityUser | null;
     getAuth0ManagementToken: () => Promise<string>;

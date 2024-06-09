@@ -13,8 +13,19 @@ export abstract class BaseService {
     this.context = context;
   }
 
-  protected get prisma() {
-    return this.context.get('prisma');
+  protected getTimestamp(mode: 'insert'): { createdAt: Date; updatedAt: Date };
+  protected getTimestamp(mode: 'update'): { updatedAt: Date };
+  protected getTimestamp(mode: 'insert' | 'update') {
+    const updatedAt = new Date();
+
+    if (mode === 'insert') {
+      return { createdAt: updatedAt, updatedAt };
+    }
+    return { updatedAt };
+  }
+
+  protected get db() {
+    return this.context.get('db');
   }
 
   protected get user() {
@@ -71,9 +82,9 @@ export abstract class BaseService {
       return undefined;
     }
 
-    const data = await response.json<{
+    const data = (await response.json()) as {
       link: string;
-    }>();
+    };
 
     await this.context.env.KV_NAMESPACE.put(key, data.link, {
       expirationTtl: 14400, // 4 hours
@@ -106,9 +117,9 @@ export abstract class BaseService {
       }),
     });
 
-    const data = await response.json<{
+    const data = (await response.json()) as {
       link: string;
-    }>();
+    };
 
     return data.link;
   }

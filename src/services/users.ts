@@ -18,7 +18,7 @@ export class UsersService extends BaseService {
       },
     });
 
-    return response.json();
+    return (await response.json()) as Array<any>;
   }
 
   async getByNickName(options: { nickname: string }) {
@@ -37,7 +37,7 @@ export class UsersService extends BaseService {
         Authorization: `Bearer ${await this.getAuth0ManagementToken()}`,
       },
     });
-    const data = await response.json<Array<any>>();
+    const data = (await response.json()) as Array<any>;
 
     if (!data.length) {
       throw new HttpNotFound();

@@ -28,7 +28,7 @@ const getUserInfo = async ({
     },
   });
 
-  const data = await response.json<IIdentityUser>();
+  const data = (await response.json()) as IIdentityUser;
 
   await context.env.KV_NAMESPACE.put(key, JSON.stringify(data), {
     expiration: payload.exp,

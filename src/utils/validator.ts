@@ -1,7 +1,7 @@
 import dayjs from 'dayjs';
 import _ from 'lodash';
 
-import { LanguageCode } from '../../generated/client/edge';
+import { LanguageCode } from './enum';
 
 export const parseQuery = (value?: string | string[]) => {
   const data = _.isArray(value) ? _.first(value) : value;
@@ -18,7 +18,7 @@ export const parseQueries = (value: unknown) => {
   return _.isEmpty(data) ? undefined : data;
 };
 
-export const regexObjectId = '[0-9a-fA-F]{24}';
+export const regexId = '\\d+';
 export const regexLanguageCode = 'en|vi|ja';
 
 export const parseDateTime = (
@@ -54,11 +54,11 @@ export const parseDateTime = (
 export const parseLanguageCode = (languageCode?: unknown): LanguageCode => {
   switch (languageCode) {
     case 'en':
-      return LanguageCode.ENGLISH;
+      return LanguageCode.English;
     case 'vi':
-      return LanguageCode.VIETNAMESE;
+      return LanguageCode.Vietnamese;
     case 'ja':
-      return LanguageCode.JAPANESE;
+      return LanguageCode.Japaneses;
     default:
       throw new Error('Invalid Language Code');
   }
